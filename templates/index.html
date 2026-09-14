@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>YouTube 片段截圖 + 字幕擷取工具</title>
+<style>
+  :root {
+    --accent: #cc0000;
+    --bg: #f7f7f8;
+    --card-bg: #ffffff;
+    --border: #e0e0e0;
+    --text: #1a1a1a;
+    --muted: #6b6b6b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    margin: 0;
+    padding: 32px 16px 80px;
+  }
+  .container { max-width: 760px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  p.subtitle-note { color: var(--muted); margin-top: 0; margin-bottom: 24px; font-size: 14px; }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  label { display: block; font-size: 14px; font-weight: 600; margin-bottom: 6px; margin-top: 14px; }
+  label:first-child { margin-top: 0; }
+  input[type=text] {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-size: 15px;
+  }
+  .time-row { display: flex; gap: 12px; }
+  .time-row > div { flex: 1; }
+  .hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  button {
+    margin-top: 20px;
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 600;
+    cursor: pointer;
+    width: 100%;
+  }
+  button:hover { opacity: 0.9; }
+  .error-box {
+    background: #fdeaea;
+    border: 1px solid #f3b4b4;
+    color: #a30000;
+    padding: 12px 16px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 14px;
+  }
+  .result-title { font-size: 16px; font-weight: 700; margin-bottom: 12px; }
+  .result-frame { width: 100%; border-radius: 8px; border: 1px solid var(--border); display: block; margin-bottom: 16px; }
+  .subtitle-box {
+    background: #fafafa;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px;
+    font-size: 15px;
+    line-height: 1.7;
+    white-space: pre-wrap;
+  }
+  .meta { font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .copy-btn {
+    margin-top: 10px;
+    background: #333;
+    width: auto;
+    padding: 8px 14px;
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>🎬 YouTube 片段截圖 + 字幕擷取工具</h1>
+  <p class="subtitle-note">貼上 YouTube 網址與時間範圍,取得起始畫面截圖與該區間的完整字幕文字。</p>
+
+  {% if error %}
+  <div class="error-box">⚠️ {{ error }}</div>
+  {% endif %}
+
+  <div class="card">
+    <form method="POST" action="/process">
+      <label for="youtube_url">YouTube 影片網址</label>
+      <input type="text" id="youtube_url" name="youtube_url"
+             placeholder="https://www.youtube.com/watch?v=..."
+             value="{{ youtube_url or '' }}" required>
+
+      <div class="time-row">
+        <div>
+          <label for="start_time">起始時間</label>
+          <input type="text" id="start_time" name="start_time"
+                 placeholder="例如 90 或 1:30" value="{{ start_time or '' }}" required>
+        </div>
+        <div>
+          <label for="end_time">結束時間</label>
+          <input type="text" id="end_time" name="end_time"
+                 placeholder="例如 120 或 2:00" value="{{ end_time or '' }}" required>
+        </div>
+      </div>
+      <div class="hint">可輸入純秒數(如 90)或 mm:ss / hh:mm:ss 格式(如 1:30)</div>
+
+      <button type="submit">產生截圖與字幕</button>
+    </form>
+  </div>
+
+  {% if result %}
+  <div class="card">
+    <div class="result-title">{{ result.title }}</div>
+    <img class="result-frame" src="{{ result.frame_url }}" alt="影片截圖">
+
+    <label>字幕內容({{ result.start_raw }} ~ {{ result.end_raw }})</label>
+    <div class="subtitle-box" id="subtitle-text">{{ result.subtitle_text }}</div>
+    <button class="copy-btn" onclick="copySubtitle()">複製字幕文字</button>
+
+    {% if result.subtitle_lang %}
+    <div class="meta">
+      字幕語言:{{ result.subtitle_lang }}{% if result.subtitle_is_auto %}(YouTube 自動生成){% endif %}
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+</div>
+
+<script>
+function copySubtitle() {
+  const text = document.getElementById('subtitle-text').innerText;
+  navigator.clipboard.writeText(text).then(() => {
+    alert('已複製字幕文字');
+  });
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+services:
+  yt-clip-tool:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./outputs:/app/outputs
+    restart: unless-stopped
