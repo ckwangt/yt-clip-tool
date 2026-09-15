@@ -8,6 +8,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
 from core import process_clip, ExtractError
+from i18n import get_translations, normalize_lang, DEFAULT_LANG
 
 app = Flask(__name__)
 
@@ -46,12 +47,17 @@ def parse_time_to_seconds(raw: str) -> float:
 
 @app.route("/", methods=["GET"])
 def index():
-    return render_template("index.html")
+    lang = normalize_lang(request.args.get("lang", DEFAULT_LANG))
+    t = get_translations(lang)
+    return render_template("index.html", t=t, lang=lang)
 
 
 @app.route("/process", methods=["POST"])
 @limiter.limit("10 per hour")  # This route runs yt-dlp + ffmpeg and is resource-intensive, so it's rate-limited more tightly
 def process():
+    lang = normalize_lang(request.form.get("lang", DEFAULT_LANG))
+    t = get_translations(lang)
+
     youtube_url = request.form.get("youtube_url", "").strip()
     start_raw = request.form.get("start_time", "").strip()
     end_raw = request.form.get("end_time", "").strip()
@@ -60,7 +66,7 @@ def process():
     result = None
 
     if not youtube_url or not start_raw or not end_raw:
-        error = "Please fill in the YouTube URL, start time, and end time"
+        error = t["error_missing_fields"]
     else:
         try:
             start_sec = parse_time_to_seconds(start_raw)
@@ -80,10 +86,12 @@ def process():
         except (ExtractError, ValueError) as e:
             error = str(e)
         except Exception as e:
-            error = f"An unexpected error occurred: {e}"
+            error = t["error_unexpected"].format(error=e)
 
     return render_template(
         "index.html",
+        t=t,
+        lang=lang,
         error=error,
         result=result,
         youtube_url=youtube_url,
@@ -94,9 +102,13 @@ def process():
 
 @app.errorhandler(429)
 def ratelimit_handler(e):
+    lang = normalize_lang(request.values.get("lang", DEFAULT_LANG))
+    t = get_translations(lang)
     return render_template(
         "index.html",
-        error="Too many requests — please try again later (rate limit: 10 processing requests per hour)",
+        t=t,
+        lang=lang,
+        error=t["error_rate_limit"],
     ), 429
 
 
