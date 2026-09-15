@@ -11,14 +11,16 @@ from core import process_clip, ExtractError
 
 app = Flask(__name__)
 
-# 速率限制:避免服務被單一來源狂打導致頻寬/CPU被榨乾
-# 正式環境若架在 nginx 反向代理後面,需要設定 X-Forwarded-For 才能抓到真實 IP,
-# 詳見 README 的 Nginx 設定範例(要加 proxy_set_header X-Real-IP $remote_addr;)
+# Rate limiting: prevents a single source from hammering the service and
+# draining bandwidth/CPU.
+# If running behind an nginx reverse proxy in production, set up
+# X-Forwarded-For so the real client IP is detected — see the Nginx config
+# example in the README (add proxy_set_header X-Real-IP $remote_addr;)
 limiter = Limiter(
     key_func=get_remote_address,
     app=app,
     default_limits=["60 per hour"],
-    storage_uri="memory://",  # 多台機器/多worker共用限制的話,建議換成 redis://,見 README
+    storage_uri="memory://",  # For a shared quota across multiple machines/workers, switch to redis:// — see README
 )
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -27,7 +29,7 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
 def parse_time_to_seconds(raw: str) -> float:
-    """支援輸入純秒數(90)或 mm:ss / hh:mm:ss 格式"""
+    """Accepts plain seconds (90) or mm:ss / hh:mm:ss format"""
     raw = raw.strip()
     if re.fullmatch(r"\d+(\.\d+)?", raw):
         return float(raw)
@@ -39,7 +41,7 @@ def parse_time_to_seconds(raw: str) -> float:
     if len(parts) == 3:
         h, m, s = parts
         return h * 3600 + m * 60 + s
-    raise ValueError(f"無法解析時間格式: {raw}")
+    raise ValueError(f"Could not parse time format: {raw}")
 
 
 @app.route("/", methods=["GET"])
@@ -48,7 +50,7 @@ def index():
 
 
 @app.route("/process", methods=["POST"])
-@limiter.limit("10 per hour")  # 這支路由會跑 yt-dlp + ffmpeg,較吃資源,額外收緊限制
+@limiter.limit("10 per hour")  # This route runs yt-dlp + ffmpeg and is resource-intensive, so it's rate-limited more tightly
 def process():
     youtube_url = request.form.get("youtube_url", "").strip()
     start_raw = request.form.get("start_time", "").strip()
@@ -58,7 +60,7 @@ def process():
     result = None
 
     if not youtube_url or not start_raw or not end_raw:
-        error = "請完整填寫 YouTube 網址、起始秒數與結束秒數"
+        error = "Please fill in the YouTube URL, start time, and end time"
     else:
         try:
             start_sec = parse_time_to_seconds(start_raw)
@@ -78,7 +80,7 @@ def process():
         except (ExtractError, ValueError) as e:
             error = str(e)
         except Exception as e:
-            error = f"發生未預期的錯誤: {e}"
+            error = f"An unexpected error occurred: {e}"
 
     return render_template(
         "index.html",
@@ -94,7 +96,7 @@ def process():
 def ratelimit_handler(e):
     return render_template(
         "index.html",
-        error="請求太頻繁了,請稍後再試(速率限制:每小時最多 10 次處理請求)",
+        error="Too many requests — please try again later (rate limit: 10 processing requests per hour)",
     ), 429
 
 
@@ -104,5 +106,5 @@ def serve_output(filename):
 
 
 if __name__ == "__main__":
-    # 本機開發用;正式環境請用 gunicorn(見 README)
+    # For local development; use gunicorn in production (see README)
     app.run(host="0.0.0.0", port=5000, debug=False)

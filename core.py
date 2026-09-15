@@ -1,9 +1,9 @@
 """
 core.py
-負責:
-1. 用 yt-dlp 解析 YouTube 影片,取得可直接串流的 URL 與字幕軌資訊
-2. 下載 / 解析 VTT 字幕,篩出指定秒數範圍內的字幕並串接成一段文字
-3. 用 ffmpeg 對指定秒數做 seek,擷取單一畫面存成 jpg
+Responsible for:
+1. Using yt-dlp to resolve a YouTube video's direct streaming URL and subtitle track info
+2. Downloading/parsing VTT subtitles, filtering to a given time range, and merging into one block of text
+3. Using ffmpeg to seek to a given second and capture a single frame as a jpg
 """
 
 import os
@@ -16,10 +16,10 @@ from urllib.parse import urlparse
 import requests
 import yt_dlp
 
-# 依優先順序挑選字幕語言(可依需求增減)
+# Subtitle language priority order (adjust as needed)
 LANG_PRIORITY = ["zh-Hant", "zh-TW", "zh-Hans", "zh-CN", "zh", "en"]
 
-# 只允許這些網域,避免服務被拿來當代理伺服器抓取任意網址
+# Only these domains are allowed, to prevent the service from being used as an open proxy
 ALLOWED_HOST_SUFFIXES = (
     "youtube.com",
     "youtube-nocookie.com",
@@ -33,12 +33,12 @@ class ExtractError(Exception):
 
 def validate_youtube_url(url: str) -> str:
     """
-    驗證網址網域是否為 YouTube,並回傳正規化後的網址。
-    不合法時丟出 ExtractError,呼叫端不需要另外檢查。
+    Validates that the URL's domain is YouTube, and returns the normalized URL.
+    Raises ExtractError if invalid; callers don't need to check separately.
     """
     url = (url or "").strip()
     if not url:
-        raise ExtractError("請輸入 YouTube 網址")
+        raise ExtractError("Please enter a YouTube URL")
 
     if not re.match(r"^https?://", url, re.IGNORECASE):
         url = "https://" + url
@@ -46,25 +46,25 @@ def validate_youtube_url(url: str) -> str:
     try:
         parsed = urlparse(url)
     except Exception:
-        raise ExtractError("網址格式不正確")
+        raise ExtractError("Invalid URL format")
 
     host = (parsed.hostname or "").lower()
     if not host:
-        raise ExtractError("網址格式不正確")
+        raise ExtractError("Invalid URL format")
 
-    # 去掉開頭的 www. 之類子網域前綴後,檢查是否命中允許的網域(或其子網域)
+    # After stripping subdomain prefixes like www., check whether the host matches an allowed domain (or its subdomain)
     is_allowed = any(
         host == suffix or host.endswith("." + suffix)
         for suffix in ALLOWED_HOST_SUFFIXES
     )
     if not is_allowed:
-        raise ExtractError("只接受 YouTube 網址(youtube.com / youtu.be)")
+        raise ExtractError("Only YouTube URLs are accepted (youtube.com / youtu.be)")
 
     return url
 
 
 def _pick_subtitle_url(info: dict):
-    """從 yt-dlp 回傳的 info dict 中,依語言優先序挑一個字幕軌網址(vtt優先)"""
+    """From yt-dlp's info dict, pick a subtitle track URL by language priority (vtt preferred)"""
     subs = info.get("subtitles") or {}
     auto = info.get("automatic_captions") or {}
 
@@ -72,13 +72,13 @@ def _pick_subtitle_url(info: dict):
         entries = track_dict.get(lang)
         if not entries:
             return None
-        # 優先找 vtt 格式
+        # Prefer vtt format
         for e in entries:
             if e.get("ext") == "vtt":
                 return e["url"]
         return entries[0].get("url")
 
-    # 先找人工上傳字幕,再找自動生成字幕
+    # Check manually uploaded subtitles first, then auto-generated ones
     for lang in LANG_PRIORITY:
         url = find_in(subs, lang)
         if url:
@@ -88,7 +88,7 @@ def _pick_subtitle_url(info: dict):
         if url:
             return url, lang, True
 
-    # 都找不到指定語言,退而求其次抓任何一種
+    # No priority language found, fall back to whatever's available
     if subs:
         lang = next(iter(subs))
         url = find_in(subs, lang)
@@ -104,7 +104,7 @@ def _pick_subtitle_url(info: dict):
 
 
 def get_video_info(youtube_url: str) -> dict:
-    """解析影片,回傳 direct_url(可直接串流)、標題、字幕網址等資訊"""
+    """Resolves the video and returns direct_url (streamable), title, subtitle URL, etc."""
     ydl_opts = {
         "format": "best[ext=mp4]/best",
         "quiet": True,
@@ -115,14 +115,14 @@ def get_video_info(youtube_url: str) -> dict:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(youtube_url, download=False)
     except Exception as e:
-        raise ExtractError(f"無法解析影片:{e}")
+        raise ExtractError(f"Could not resolve the video: {e}")
 
     direct_url = info.get("url")
     if not direct_url and info.get("requested_formats"):
-        # 有些情況會拆成分離的影音軌,取影像軌
+        # Some cases split into separate audio/video tracks — take the video track
         direct_url = info["requested_formats"][0].get("url")
     if not direct_url:
-        raise ExtractError("找不到可用的影片串流網址(可能是會員限定/私人影片/地區限制)")
+        raise ExtractError("No usable video stream URL found (may be members-only / private / region-restricted)")
 
     sub_url, sub_lang, is_auto = _pick_subtitle_url(info)
 
@@ -137,7 +137,7 @@ def get_video_info(youtube_url: str) -> dict:
 
 
 def _timestamp_to_seconds(ts: str) -> float:
-    """把 VTT 時間戳 (HH:MM:SS.mmm 或 MM:SS.mmm) 轉成秒數"""
+    """Converts a VTT timestamp (HH:MM:SS.mmm or MM:SS.mmm) to seconds"""
     parts = ts.strip().split(":")
     parts = [p.replace(",", ".") for p in parts]
     if len(parts) == 3:
@@ -146,7 +146,7 @@ def _timestamp_to_seconds(ts: str) -> float:
         h = "0"
         m, s = parts
     else:
-        raise ValueError(f"無法解析時間戳: {ts}")
+        raise ValueError(f"Could not parse timestamp: {ts}")
     return int(h) * 3600 + int(m) * 60 + float(s)
 
 
@@ -163,7 +163,7 @@ _CJK_RE = re.compile(r"[\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7a3]")
 
 
 def _is_cjk_heavy(text: str) -> bool:
-    """判斷文字是否以中日韓文字為主(此類語言用空白分詞沒有意義)"""
+    """Determines whether text is predominantly CJK (whitespace tokenization doesn't apply to these languages)"""
     if not text:
         return False
     cjk_count = len(_CJK_RE.findall(text))
@@ -172,12 +172,16 @@ def _is_cjk_heavy(text: str) -> bool:
 
 def _merge_rolling_captions(cue_texts: list) -> str:
     """
-    YouTube 自動字幕常見「逐字捲動」格式:每個 cue 跟前一個 cue 有部分文字重疊
-    (例如 cue1='hello world', cue2='hello world how are', cue3='how are you today')。
-    用 difflib 找出每個 cue 相對於前一個累積結果新增的部分,只把新增部分接上去,
-    避免重複文字;對一般(無重疊)人工字幕則等同直接串接,不影響結果。
+    YouTube auto-captions commonly use a "rolling" format where each cue partially
+    overlaps the previous one's text
+    (e.g. cue1='hello world', cue2='hello world how are', cue3='how are you today').
+    Uses difflib to find the part of each cue that's new relative to the accumulated
+    result so far, and appends only that new part, avoiding duplicated text; for
+    ordinary (non-overlapping) manual subtitles this is equivalent to a plain
+    concatenation and doesn't change the result.
 
-    中日韓文字沒有空白分詞,改用逐字比對;其餘語言用空白分詞後逐詞比對。
+    CJK text has no whitespace tokenization, so it's compared character-by-character;
+    other languages are tokenized by whitespace and compared word-by-word.
     """
     import difflib
 
@@ -198,7 +202,7 @@ def _merge_rolling_captions(cue_texts: list) -> str:
             merged_tokens.extend(tokens)
             continue
 
-        # 只跟目前累積結果的「尾端一段」比對,避免整部影片字幕都拿來比對拖慢速度
+        # Only compare against the "tail" of the accumulated result so far, to avoid comparing against the whole video's subtitles and slowing things down
         tail_window = merged_tokens[-max(len(tokens) * 3, 30):]
         matcher = difflib.SequenceMatcher(a=tail_window, b=tokens, autojunk=False)
         match = matcher.find_longest_match(0, len(tail_window), 0, len(tokens))
@@ -215,8 +219,9 @@ def _merge_rolling_captions(cue_texts: list) -> str:
 
 def parse_vtt_range(vtt_text: str, start_sec: float, end_sec: float) -> str:
     """
-    解析 VTT 內容,回傳 [start_sec, end_sec] 範圍內所有字幕行,
-    合併 YouTube 自動字幕常見的逐字捲動重覆後,串接成一段文字。
+    Parses VTT content and returns all subtitle lines within [start_sec, end_sec],
+    merging YouTube's common rolling auto-caption duplication and joining them
+    into one block of text.
     """
     blocks = re.split(r"\n\s*\n", vtt_text.replace("\r\n", "\n"))
     time_re = re.compile(
@@ -232,12 +237,12 @@ def parse_vtt_range(vtt_text: str, start_sec: float, end_sec: float) -> str:
         b_start = _timestamp_to_seconds(m.group(1))
         b_end = _timestamp_to_seconds(m.group(2))
 
-        # 判斷這段字幕是否與 [start_sec, end_sec] 有重疊
+        # Check whether this cue overlaps [start_sec, end_sec]
         if b_end < start_sec or b_start > end_sec:
             continue
 
         lines = block.split("\n")
-        # 第一行若是純數字(cue編號)就跳過,再跳過時間戳那行
+        # Skip the cue-number line if the first line is purely numeric, and skip the timestamp line
         text_lines = []
         for line in lines:
             if time_re.search(line):
@@ -262,10 +267,10 @@ def fetch_subtitle_text(subtitle_url: str, start_sec: float, end_sec: float) -> 
 
 
 def capture_frame(direct_video_url: str, at_second: float, out_dir: str) -> str:
-    """用 ffmpeg 對直連影片網址做 seek,擷取單一畫面存成 jpg,回傳檔案路徑"""
+    """Uses ffmpeg to seek the direct video URL and capture a single frame as a jpg, returning the file path"""
     out_path = os.path.join(out_dir, f"frame_{uuid.uuid4().hex}.jpg")
 
-    # -ss 放在 -i 之前可以用 input seeking,對遠端串流較快
+    # Placing -ss before -i enables input seeking, which is faster for remote streams
     cmd = [
         "ffmpeg",
         "-y",
@@ -277,13 +282,13 @@ def capture_frame(direct_video_url: str, at_second: float, out_dir: str) -> str:
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     if result.returncode != 0 or not os.path.exists(out_path):
-        raise ExtractError(f"ffmpeg 擷取畫面失敗: {result.stderr[-800:]}")
+        raise ExtractError(f"ffmpeg failed to capture the frame: {result.stderr[-800:]}")
     return out_path
 
 
 def process_clip(youtube_url: str, start_sec: float, end_sec: float, out_dir: str) -> dict:
     if end_sec <= start_sec:
-        raise ExtractError("結束秒數必須大於起始秒數")
+        raise ExtractError("End time must be later than start time")
 
     youtube_url = validate_youtube_url(youtube_url)
 
@@ -291,7 +296,7 @@ def process_clip(youtube_url: str, start_sec: float, end_sec: float, out_dir: st
 
     if info["duration"] and end_sec > info["duration"]:
         raise ExtractError(
-            f"結束秒數({end_sec})超過影片長度({info['duration']}秒)"
+            f"End time ({end_sec}) exceeds the video's duration ({info['duration']}s)"
         )
 
     frame_path = capture_frame(info["direct_url"], start_sec, out_dir)
@@ -301,9 +306,9 @@ def process_clip(youtube_url: str, start_sec: float, end_sec: float, out_dir: st
         try:
             subtitle_text = fetch_subtitle_text(info["subtitle_url"], start_sec, end_sec)
         except Exception as e:
-            subtitle_text = f"(字幕擷取失敗: {e})"
+            subtitle_text = f"(Failed to fetch subtitles: {e})"
     else:
-        subtitle_text = "(這部影片沒有可用的字幕)"
+        subtitle_text = "(No subtitles available for this video)"
 
     return {
         "title": info["title"],
