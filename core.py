@@ -106,7 +106,9 @@ def _pick_subtitle_url(info: dict):
 def get_video_info(youtube_url: str) -> dict:
     """Resolves the video and returns direct_url (streamable), title, subtitle URL, etc."""
     ydl_opts = {
-        "format": "best[ext=mp4]/best",
+        # Screenshots only need the video track, so prefer a video-only format
+        # (no audio, no merging required) and fall back to a combined stream.
+        "format": "bv*[ext=mp4]/bv*/best[ext=mp4]/best",
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
