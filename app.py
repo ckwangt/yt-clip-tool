@@ -92,12 +92,14 @@ def process():
             data = process_clip(youtube_url, start_sec, end_sec, OUTPUT_DIR)
 
             frame_filename = os.path.basename(data["frame_path"])
+            download_filename = build_download_filename(
+                data["title"], start_sec, end_sec, data["subtitle_lang"]
+            )
             result = {
                 "title": data["title"],
                 "frame_url": url_for("serve_output", filename=frame_filename),
-                "download_filename": build_download_filename(
-                    data["title"], start_sec, end_sec, data["subtitle_lang"]
-                ),
+                "download_url": url_for("serve_output", filename=frame_filename, dl=download_filename),
+                "download_filename": download_filename,
                 "subtitle_text": data["subtitle_text"],
                 "subtitle_lang": data["subtitle_lang"],
                 "subtitle_is_auto": data["subtitle_is_auto"],
@@ -135,6 +137,13 @@ def ratelimit_handler(e):
 
 @app.route("/outputs/<path:filename>")
 def serve_output(filename):
+    download_name = request.args.get("dl")
+    if download_name:
+        # A distinct URL (query string) from the plain <img src> one, and a
+        # server-set Content-Disposition, so the suggested filename doesn't
+        # depend on the browser reusing its cached response for the <img>
+        # fetch and falling back to the raw on-disk filename.
+        return send_from_directory(OUTPUT_DIR, filename, as_attachment=True, download_name=download_name)
     return send_from_directory(OUTPUT_DIR, filename)
 
 
