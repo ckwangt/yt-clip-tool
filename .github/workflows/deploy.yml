@@ -15,6 +15,7 @@ jobs:
           host: ${{ secrets.GCP_HOST }}
           username: ${{ secrets.GCP_USERNAME }}
           key: ${{ secrets.GCP_SSH_PRIVATE_KEY }}
+          command_timeout: "20m"
           script: |
             cd ~/yt-clip-tool
             git pull
