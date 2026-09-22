@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>yt-clip-tool · Admin Dashboard</title>
+<style>
+  :root {
+    --accent: #cc0000;
+    --bg: #f7f7f8;
+    --card-bg: #ffffff;
+    --border: #e0e0e0;
+    --text: #1a1a1a;
+    --muted: #6b6b6b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Segoe UI", "Helvetica Neue", "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    margin: 0;
+    padding: 32px 16px 80px;
+  }
+  .container { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 22px; margin-bottom: 4px; }
+  p.subtitle-note { color: var(--muted); margin-top: 0; margin-bottom: 24px; font-size: 14px; }
+  .stat-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+  .stat-card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 18px 20px;
+    flex: 1;
+    min-width: 150px;
+  }
+  .stat-card .label { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .stat-card .value { font-size: 30px; font-weight: 700; }
+  .stat-card .sub { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+  .card h2 { font-size: 16px; margin-top: 0; margin-bottom: 14px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+  td.url a { color: var(--accent); text-decoration: none; word-break: break-all; }
+  td.url a:hover { text-decoration: underline; }
+  .empty { color: var(--muted); font-size: 14px; padding: 12px 0; }
+  .refresh-note { font-size: 12px; color: var(--muted); margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Admin Dashboard</h1>
+  <p class="subtitle-note">yt-clip-tool usage stats</p>
+
+  <div class="stat-row">
+    <div class="stat-card">
+      <div class="label">Generate clicks</div>
+      <div class="value">{{ stats.generate_total }}</div>
+      <div class="sub">{{ stats.generate_success }} succeeded · {{ stats.generate_failed }} failed</div>
+    </div>
+    <div class="stat-card">
+      <div class="label">Save image as... clicks</div>
+      <div class="value">{{ stats.save_as_total }}</div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Videos generated (most recent {{ stats.videos|length }})</h2>
+    {% if stats.videos %}
+    <table>
+      <thead>
+        <tr>
+          <th>Video</th>
+          <th>Time range</th>
+          <th>Generated at (UTC)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for title, url, start, end, created_at in stats.videos %}
+        <tr>
+          <td class="url">
+            {{ title or "(untitled)" }}<br>
+            <a href="{{ url }}" target="_blank" rel="noopener">{{ url }}</a>
+          </td>
+          <td>{{ start }} ~ {{ end }}</td>
+          <td>{{ created_at }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="empty">No successful generates yet.</div>
+    {% endif %}
+  </div>
+
+  <div class="refresh-note">Reload the page to refresh these numbers.</div>
+</div>
+</body>
+</html>

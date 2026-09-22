@@ -4,3 +4,4 @@ outputs/*.jpg
 .venv/
 venv/
 *.env
+data/*.db

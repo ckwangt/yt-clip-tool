@@ -5,4 +5,8 @@ services:
       - "5000:5000"
     volumes:
       - ./outputs:/app/outputs
+      - ./data:/app/data
+    environment:
+      - ADMIN_USER=${ADMIN_USER:-admin}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
     restart: unless-stopped

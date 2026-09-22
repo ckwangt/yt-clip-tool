@@ -1,14 +1,17 @@
 import os
 import re
+import secrets
 import tempfile
 import uuid
+from functools import wraps
 
-from flask import Flask, render_template, request, send_from_directory, url_for
+from flask import Flask, render_template, request, send_from_directory, url_for, Response
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 
 from core import process_clip, ExtractError
 from i18n import get_translations, normalize_lang, DEFAULT_LANG
+import db
 
 app = Flask(__name__)
 
@@ -27,6 +30,34 @@ limiter = Limiter(
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+db.init_db()
+
+# Set ADMIN_PASSWORD in the environment (e.g. via docker-compose) to protect
+# /admin with HTTP Basic Auth. If it's unset, /admin is left unprotected —
+# fine for local dev, NOT recommended once this is exposed to the internet.
+ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+
+
+def requires_admin_auth(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if not ADMIN_PASSWORD:
+            return view(*args, **kwargs)
+        auth = request.authorization
+        valid = (
+            auth
+            and secrets.compare_digest(auth.username, ADMIN_USER)
+            and secrets.compare_digest(auth.password, ADMIN_PASSWORD)
+        )
+        if not valid:
+            return Response(
+                "Authentication required", 401,
+                {"WWW-Authenticate": 'Basic realm="Admin"'},
+            )
+        return view(*args, **kwargs)
+    return wrapped
 
 
 _FILENAME_UNSAFE_RE = re.compile(r'[\\/:*?"<>|]+')
@@ -82,6 +113,7 @@ def process():
 
     error = None
     result = None
+    video_title = None
 
     if not youtube_url or not start_raw or not end_raw:
         error = t["error_missing_fields"]
@@ -90,6 +122,7 @@ def process():
             start_sec = parse_time_to_seconds(start_raw)
             end_sec = parse_time_to_seconds(end_raw)
             data = process_clip(youtube_url, start_sec, end_sec, OUTPUT_DIR)
+            video_title = data["title"]
 
             frame_filename = os.path.basename(data["frame_path"])
             download_filename = build_download_filename(
@@ -110,6 +143,11 @@ def process():
             error = str(e)
         except Exception as e:
             error = t["error_unexpected"].format(error=e)
+
+    try:
+        db.log_generate(video_title, youtube_url, start_raw, end_raw, success=result is not None)
+    except Exception:
+        pass  # never let analytics logging break the actual feature
 
     return render_template(
         "index.html",
@@ -143,8 +181,21 @@ def serve_output(filename):
         # server-set Content-Disposition, so the suggested filename doesn't
         # depend on the browser reusing its cached response for the <img>
         # fetch and falling back to the raw on-disk filename.
+        # This is also the URL the "Save image" button/link points at, so a
+        # request here is exactly a "save as" click — log it.
+        try:
+            db.log_save_as(download_name)
+        except Exception:
+            pass
         return send_from_directory(OUTPUT_DIR, filename, as_attachment=True, download_name=download_name)
     return send_from_directory(OUTPUT_DIR, filename)
+
+
+@app.route("/admin")
+@requires_admin_auth
+def admin_dashboard():
+    stats = db.get_stats()
+    return render_template("admin.html", stats=stats)
 
 
 if __name__ == "__main__":
