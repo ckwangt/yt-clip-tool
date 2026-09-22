@@ -275,6 +275,35 @@ def fetch_subtitle_text(subtitle_url: str, start_sec: float, end_sec: float) -> 
     return parse_vtt_range(resp.text, start_sec, end_sec)
 
 
+_FFMPEG_ERROR_KEYWORDS_RE = re.compile(
+    r"(error|timed?\s*out|forbidden|denied|refused|reconnect|failed|not available|unavailable|"
+    r"invalid data|not found|\bhttp\b|\b[45]\d\d\b)",
+    re.IGNORECASE,
+)
+
+
+def _extract_ffmpeg_error(stderr: str, input_url: str, max_len: int = 800) -> str:
+    """
+    Builds a readable error summary from ffmpeg's stderr.
+
+    A plain tail-truncation (stderr[-N:]) tends to get filled up by the (often
+    huge, signed) input URL that ffmpeg echoes back in its error lines, pushing
+    the actual failure reason out of the window. This redacts the input URL
+    first, then prefers lines that mention error/timeout/HTTP-status keywords
+    over just the raw tail of the log.
+    """
+    if input_url:
+        stderr = stderr.replace(input_url, "<video_url>")
+
+    lines = [ln.strip() for ln in stderr.splitlines() if ln.strip()]
+    keyword_lines = [ln for ln in lines if _FFMPEG_ERROR_KEYWORDS_RE.search(ln)]
+
+    summary_lines = keyword_lines[-5:] if keyword_lines else lines[-5:]
+    summary = " | ".join(summary_lines) if summary_lines else stderr
+
+    return summary[:max_len]
+
+
 def capture_frame(direct_video_url: str, at_second: float, out_dir: str) -> str:
     """Uses ffmpeg to seek the direct video URL and capture a single frame as a jpg, returning the file path"""
     out_path = os.path.join(out_dir, f"frame_{uuid.uuid4().hex}.jpg")
@@ -291,7 +320,9 @@ def capture_frame(direct_video_url: str, at_second: float, out_dir: str) -> str:
     ]
     result = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
     if result.returncode != 0 or not os.path.exists(out_path):
-        raise ExtractError(f"ffmpeg failed to capture the frame: {result.stderr[-800:]}")
+        raise ExtractError(
+            f"ffmpeg failed to capture the frame: {_extract_ffmpeg_error(result.stderr, direct_video_url)}"
+        )
     return out_path
 
 
