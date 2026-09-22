@@ -94,6 +94,14 @@
     padding: 8px 14px;
     font-size: 13px;
   }
+  a.copy-btn {
+    display: inline-block;
+    color: white;
+    text-decoration: none;
+    border-radius: 8px;
+    font-weight: 600;
+    cursor: pointer;
+  }
 </style>
 </head>
 <body>
@@ -144,6 +152,7 @@
   <div class="card">
     <div class="result-title">{{ result.title }}</div>
     <img class="result-frame" src="{{ result.frame_url }}" alt="{{ t.alt_screenshot }}">
+    <a class="copy-btn" href="{{ result.frame_url }}" download="screenshot.jpg">{{ t.button_save_image }}</a>
 
     <label>{{ t.label_result_subtitle }} ({{ result.start_raw }} ~ {{ result.end_raw }})</label>
     <div class="subtitle-box" id="subtitle-text">{{ result.subtitle_text }}</div>
