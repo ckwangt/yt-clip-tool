@@ -29,6 +29,24 @@ OUTPUT_DIR = os.path.join(BASE_DIR, "outputs")
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
+_FILENAME_UNSAFE_RE = re.compile(r'[\\/:*?"<>|]+')
+
+
+def sanitize_filename_part(text: str, max_len: int = 40) -> str:
+    """Strips characters invalid in Windows/Unix filenames and collapses whitespace"""
+    text = _FILENAME_UNSAFE_RE.sub("-", text.strip())
+    text = re.sub(r"\s+", "_", text)
+    return text[:max_len].strip("_-") or "clip"
+
+
+def build_download_filename(title: str, start_sec: float, end_sec: float, subtitle_lang: str) -> str:
+    title_part = sanitize_filename_part(title, max_len=30)
+    start_part = f"{start_sec:g}"
+    end_part = f"{end_sec:g}"
+    lang_part = subtitle_lang or "nosub"
+    return f"{title_part}_{start_part}_{end_part}_{lang_part}.jpg"
+
+
 def parse_time_to_seconds(raw: str) -> float:
     """Accepts plain seconds (90) or mm:ss / hh:mm:ss format"""
     raw = raw.strip()
@@ -77,6 +95,9 @@ def process():
             result = {
                 "title": data["title"],
                 "frame_url": url_for("serve_output", filename=frame_filename),
+                "download_filename": build_download_filename(
+                    data["title"], start_sec, end_sec, data["subtitle_lang"]
+                ),
                 "subtitle_text": data["subtitle_text"],
                 "subtitle_lang": data["subtitle_lang"],
                 "subtitle_is_auto": data["subtitle_is_auto"],

@@ -152,7 +152,7 @@
   <div class="card">
     <div class="result-title">{{ result.title }}</div>
     <img class="result-frame" src="{{ result.frame_url }}" alt="{{ t.alt_screenshot }}">
-    <a class="copy-btn" href="{{ result.frame_url }}" download="screenshot.jpg">{{ t.button_save_image }}</a>
+    <a class="copy-btn" href="{{ result.frame_url }}" download="{{ result.download_filename }}">{{ t.button_save_image }}</a>
 
     <label>{{ t.label_result_subtitle }} ({{ result.start_raw }} ~ {{ result.end_raw }})</label>
     <div class="subtitle-box" id="subtitle-text">{{ result.subtitle_text }}</div>
